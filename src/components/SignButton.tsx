@@ -53,18 +53,25 @@ export const SignButton = () => {
         body: { ip, fingerprint }
       });
 
-      if (error) {
+      // Verificar se há erro ou resposta com erro
+      const responseData = data || {};
+      const hasError = error || responseData.error;
+
+      if (hasError) {
         // Tratar erros específicos sem expor detalhes técnicos
-        if (error.message?.includes('409') || data?.error === 'Assinatura duplicada') {
+        const errorType = responseData.error || '';
+        const errorMessage = responseData.message || '';
+        
+        if (errorType === 'Assinatura duplicada' || errorMessage.includes('já assinou')) {
           toast.error("Você já assinou esta petição!", {
             description: "Cada pessoa pode assinar apenas uma vez.",
           });
           setHasSigned(true);
-        } else if (error.message?.includes('429') || data?.error === 'Muitas tentativas') {
+        } else if (errorType === 'Muitas tentativas' || errorMessage.includes('Aguarde')) {
           toast.error("Muitas tentativas", {
-            description: data?.message || "Por favor, aguarde antes de tentar novamente.",
+            description: errorMessage || "Por favor, aguarde antes de tentar novamente.",
           });
-        } else if (error.message?.includes('400') || data?.error === 'Dados inválidos') {
+        } else if (errorType === 'Dados inválidos') {
           toast.error("Erro de validação", {
             description: "Por favor, tente novamente.",
           });
