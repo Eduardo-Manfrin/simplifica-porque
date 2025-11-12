@@ -35,43 +35,46 @@ export const SignButton = () => {
     setIsLoading(true);
 
     try {
-      // Obter IP do usuário via serviço externo
-      const ipResponse = await fetch("https://api.ipify.org?format=json");
+      // Obter IP do usuário via serviço externo (com timeout)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const ipResponse = await fetch("https://api.ipify.org?format=json", {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
       const { ip } = await ipResponse.json();
       
       // Gerar fingerprint do navegador
       const fingerprint = getBrowserFingerprint();
 
-      // Verificar se já existe assinatura com este IP ou fingerprint
-      const { data: existingSignatures, error: checkError } = await supabase
-        .from("signatures")
-        .select("id")
-        .or(`ip_address.eq.${ip},browser_fingerprint.eq.${fingerprint}`)
-        .limit(1);
+      // Chamar edge function segura com validação server-side
+      const { data, error } = await supabase.functions.invoke('sign-petition', {
+        body: { ip, fingerprint }
+      });
 
-      if (checkError) {
-        throw checkError;
-      }
-
-      if (existingSignatures && existingSignatures.length > 0) {
-        toast.error("Você já assinou esta petição!", {
-          description: "Cada pessoa pode assinar apenas uma vez.",
-        });
-        setHasSigned(true);
+      if (error) {
+        // Tratar erros específicos sem expor detalhes técnicos
+        if (error.message?.includes('409') || data?.error === 'Assinatura duplicada') {
+          toast.error("Você já assinou esta petição!", {
+            description: "Cada pessoa pode assinar apenas uma vez.",
+          });
+          setHasSigned(true);
+        } else if (error.message?.includes('429') || data?.error === 'Muitas tentativas') {
+          toast.error("Muitas tentativas", {
+            description: data?.message || "Por favor, aguarde antes de tentar novamente.",
+          });
+        } else if (error.message?.includes('400') || data?.error === 'Dados inválidos') {
+          toast.error("Erro de validação", {
+            description: "Por favor, tente novamente.",
+          });
+        } else {
+          toast.error("Erro ao registrar assinatura", {
+            description: "Por favor, tente novamente mais tarde.",
+          });
+        }
         setIsLoading(false);
         return;
-      }
-
-      // Inserir nova assinatura
-      const { error: insertError } = await supabase
-        .from("signatures")
-        .insert({
-          ip_address: ip,
-          browser_fingerprint: fingerprint,
-        });
-
-      if (insertError) {
-        throw insertError;
       }
 
       setHasSigned(true);
@@ -79,7 +82,7 @@ export const SignButton = () => {
         description: "Obrigado por apoiar a simplificação do português! 🇧🇷",
       });
     } catch (error) {
-      console.error("Erro ao assinar:", error);
+      // Erro genérico sem exposição de detalhes
       toast.error("Erro ao registrar assinatura", {
         description: "Por favor, tente novamente mais tarde.",
       });

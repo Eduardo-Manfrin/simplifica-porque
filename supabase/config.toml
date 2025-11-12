@@ -1,1 +1,4 @@
 project_id = "gmrwjppwjmrppccptiej"
+
+[functions.sign-petition]
+verify_jwt = false
